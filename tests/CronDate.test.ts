@@ -462,4 +462,47 @@ describe('CronDate', () => {
       expect(d.toISOString()).toBe('2021-01-04T15:00:00.000Z');
     });
   });
+
+  describe('getNearestWeekdayOfMonth', () => {
+    test('returns the target day unchanged when it is a weekday', () => {
+      // Jun 14 2024 is a Friday
+      const date = new CronDate(new Date(2024, 5, 14));
+      expect(date.getNearestWeekdayOfMonth(14)).toBe(14);
+    });
+
+    test('a Saturday target moves to the previous Friday', () => {
+      // Jun 15 2024 is a Saturday
+      const date = new CronDate(new Date(2024, 5, 1));
+      expect(date.getNearestWeekdayOfMonth(15)).toBe(14);
+    });
+
+    test('Saturday the 1st moves forward to Monday the 3rd instead of crossing the month boundary', () => {
+      // Feb 1 2025 is a Saturday
+      const date = new CronDate(new Date(2025, 1, 1));
+      expect(date.getNearestWeekdayOfMonth(1)).toBe(3);
+    });
+
+    test('a Sunday target moves to the following Monday', () => {
+      // Sep 15 2024 is a Sunday
+      const date = new CronDate(new Date(2024, 8, 1));
+      expect(date.getNearestWeekdayOfMonth(15)).toBe(16);
+    });
+
+    test('a Sunday on the last day of the month moves back to Friday', () => {
+      // Mar 31 2024 is a Sunday
+      const date = new CronDate(new Date(2024, 2, 1));
+      expect(date.getNearestWeekdayOfMonth(31)).toBe(29);
+      // Same rule powers LW: last day -> last weekday
+      expect(date.getNearestWeekdayOfMonth(date.daysInMonth())).toBe(29);
+    });
+
+    test('returns null when the target day does not exist in the month', () => {
+      // February never has a 30th or 31st
+      const date = new CronDate(new Date(2024, 1, 1));
+      expect(date.getNearestWeekdayOfMonth(30)).toBeNull();
+      expect(date.getNearestWeekdayOfMonth(31)).toBeNull();
+      // Non-leap February has no 29th
+      expect(new CronDate(new Date(2023, 1, 1)).getNearestWeekdayOfMonth(29)).toBeNull();
+    });
+  });
 });

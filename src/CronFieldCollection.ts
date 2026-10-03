@@ -158,9 +158,24 @@ export class CronFieldCollection {
       throw new Error('Validation error, Field dayOfWeek is missing');
     }
 
-    if (month.values.length === 1 && !dayOfMonth.hasLastChar) {
+    // "L" and "W" expressions resolve dynamically (e.g. last day of the month
+    // or the nearest weekday); they must not be rejected against a short month
+    // even when an explicit month is given - they simply do not fire then.
+    if (month.values.length === 1 && !dayOfMonth.hasLastChar && !dayOfMonth.hasWeekdayChar) {
       if (!(parseInt(dayOfMonth.values[0] as string, 10) <= CronMonth.daysInMonth[month.values[0] - 1])) {
         throw new Error('Invalid explicit day of month definition');
+      }
+    }
+
+    // A "<day>W" expression can never fire when no allowed month contains its
+    // target day (e.g. "31W" with only February selected), so reject it early
+    // instead of silently iterating to a bogus date. February is counted with
+    // its leap-year length (29 days); "LW" always has a target.
+    const weekdayTarget = dayOfMonth.weekdayTarget;
+    if (weekdayTarget !== null) {
+      const maxDaysInAllowedMonths = Math.max(...month.values.map((m) => CronMonth.daysInMonth[m - 1]));
+      if (weekdayTarget > maxDaysInAllowedMonths) {
+        throw new Error(`Invalid nearest weekday day of month definition, no allowed month has a day ${weekdayTarget}`);
       }
     }
 

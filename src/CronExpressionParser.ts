@@ -131,6 +131,11 @@ export class CronExpressionParser {
       rand,
     ) as DayOfMonthRange[];
     const { dayOfWeek: _dayOfWeek, nthDayOfWeek } = CronExpressionParser.#parseNthDay(rawFields.dayOfWeek);
+    // Quartz only supports the "W" modifier on its own; combining it with a
+    // restricted day-of-week field is ambiguous and rejected at parse time.
+    if (rawFields.dayOfMonth.includes('W') && !['*', '?'].includes(rawFields.dayOfWeek)) {
+      throw new Error("Constraint error, cannot specify 'W' in dayOfMonth together with a dayOfWeek expression");
+    }
     const dayOfWeek = CronExpressionParser.#parseField(
       CronUnit.DayOfWeek,
       _dayOfWeek,

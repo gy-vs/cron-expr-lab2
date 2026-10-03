@@ -504,6 +504,50 @@ export class CronDate {
   }
 
   /**
+   * Returns the number of days in the current month.
+   * @returns {number}
+   */
+  daysInMonth(): number {
+    return this.#date.daysInMonth as number;
+  }
+
+  /**
+   * Returns the weekday (Mon-Fri) nearest to the given day of the current month,
+   * following the Quartz "W" semantics. The result never crosses a month
+   * boundary:
+   * - if the target day is a Saturday, the previous Friday is used, unless the
+   *   target day is the 1st, in which case the following Monday is used;
+   * - if the target day is a Sunday, the following Monday is used, unless the
+   *   target day is the last day of the month, in which case the previous
+   *   Friday is used;
+   * - otherwise the target day itself (already a weekday) is returned.
+   *
+   * @param {number} day - The target day of month (1-based)
+   * @returns {number | null} The nearest weekday day of month, or null when the
+   *   target day does not exist in the current month
+   */
+  getNearestWeekdayOfMonth(day: number): number | null {
+    if (day < 1 || day > this.daysInMonth()) {
+      return null;
+    }
+    // luxon weekdays are 1 (Monday) to 7 (Sunday); CronDate#getDay maps 7 to 0
+    // for Sunday, but the boundary checks below use the luxon numbering.
+    const targetDate = this.#date.set({ day });
+    const weekday = targetDate.weekday;
+    const lastDay = this.daysInMonth();
+
+    if (weekday === 6) {
+      // Saturday: back up to Friday, except for the 1st which jumps to Monday
+      return day === 1 ? day + 2 : day - 1;
+    }
+    if (weekday === 7) {
+      // Sunday: move to Monday, except for the last day which falls back to Friday
+      return day === lastDay ? day - 2 : day + 1;
+    }
+    return day;
+  }
+
+  /**
    * Returns true if the day is the last day of the month.
    * @returns {boolean}
    */

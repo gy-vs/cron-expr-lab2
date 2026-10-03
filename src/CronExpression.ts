@@ -389,9 +389,12 @@ export class CronExpression {
     const isRestrictedDayOfWeek = !isDayOfWeekWildcardMatch;
 
     // Calculate if the current date matches the day of month and day of week fields.
-    const matchedDOM =
-      CronExpression.#matchSchedule(currentDate.getDate(), this.#fields.dayOfMonth.values) ||
-      (this.#fields.dayOfMonth.hasLastChar && currentDate.isLastDayOfMonth());
+    const dayOfMonthField = this.#fields.dayOfMonth;
+    const matchedDOM = dayOfMonthField.hasWeekdayChar
+      ? // Quartz "W" / "LW": the single resolved nearest-weekday of the current month
+        dayOfMonthField.nearestWeekdayInMonth(currentDate) === currentDate.getDate()
+      : CronExpression.#matchSchedule(currentDate.getDate(), dayOfMonthField.values) ||
+        (dayOfMonthField.hasLastChar && currentDate.isLastDayOfMonth());
     const matchedDOW =
       CronExpression.#matchSchedule(currentDate.getDay(), this.#fields.dayOfWeek.values) ||
       (this.#fields.dayOfWeek.hasLastChar &&
@@ -522,7 +525,18 @@ export class CronExpression {
       this.#validateTimeSpan(currentDate);
 
       if (!this.#matchDayOfMonth(currentDate)) {
-        currentDate.applyDateOperation(dateMathVerb, TimeUnit.Day, this.#fields.hour.values.length);
+        // A "<day>W" target that does not exist in a short month (e.g. "31W" in
+        // February) can never fire this month - skip it wholesale instead of
+        // scanning day by day through a month without a possible match.
+        if (
+          this.#fields.dayOfMonth.hasWeekdayChar &&
+          !this.#fields.dayOfMonth.isLastWeekday &&
+          this.#fields.dayOfMonth.nearestWeekdayInMonth(currentDate) === null
+        ) {
+          currentDate.applyDateOperation(dateMathVerb, TimeUnit.Month, this.#fields.hour.values.length);
+        } else {
+          currentDate.applyDateOperation(dateMathVerb, TimeUnit.Day, this.#fields.hour.values.length);
+        }
         continue;
       }
       if (
