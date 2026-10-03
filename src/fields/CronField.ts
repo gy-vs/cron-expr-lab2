@@ -17,11 +17,13 @@ export type SerializedCronField = {
  * @property {string} rawValue - The raw value of the field.
  * @property {boolean} [wildcard] - Indicates if the field is a wildcard.
  * @property {number} [nthDayOfWeek] - The nth day of the week.
+ * @property {boolean} [nearestWeekday] - For the day-of-month field, whether the "W" (nearest weekday) modifier was used.
  */
 export type CronFieldOptions = {
   rawValue?: string;
   wildcard?: boolean;
   nthDayOfWeek?: number;
+  nearestWeekday?: boolean;
 };
 
 /**

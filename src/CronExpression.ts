@@ -389,9 +389,23 @@ export class CronExpression {
     const isRestrictedDayOfWeek = !isDayOfWeekWildcardMatch;
 
     // Calculate if the current date matches the day of month and day of week fields.
-    const matchedDOM =
-      CronExpression.#matchSchedule(currentDate.getDate(), this.#fields.dayOfMonth.values) ||
-      (this.#fields.dayOfMonth.hasLastChar && currentDate.isLastDayOfMonth());
+    let matchedDOM: boolean;
+    const dayOfMonthField = this.#fields.dayOfMonth;
+    if (dayOfMonthField.nearestWeekday) {
+      // Quartz "W": resolve the referenced day ("n" or, for "LW", the last day
+      // of the month) to the nearest weekday inside this month. Months that do
+      // not contain the referenced day (e.g. "31W" in February) never match,
+      // except the "31W" Friday-end-of-30-day-month quirk below.
+      const referencedDay = dayOfMonthField.hasLastChar
+        ? currentDate.getDaysInMonth()
+        : (dayOfMonthField.values[0] as number);
+      const nearestWeekday = currentDate.getNearestWeekdayOfMonth(referencedDay);
+      matchedDOM = nearestWeekday !== null && currentDate.getDate() === nearestWeekday;
+    } else {
+      matchedDOM =
+        CronExpression.#matchSchedule(currentDate.getDate(), dayOfMonthField.values) ||
+        (dayOfMonthField.hasLastChar && currentDate.isLastDayOfMonth());
+    }
     const matchedDOW =
       CronExpression.#matchSchedule(currentDate.getDay(), this.#fields.dayOfWeek.values) ||
       (this.#fields.dayOfWeek.hasLastChar &&
@@ -521,6 +535,12 @@ export class CronExpression {
     while (++stepCount < LOOP_LIMIT) {
       this.#validateTimeSpan(currentDate);
 
+      // Check the month before evaluating day rules: skipping a whole month at
+      // once keeps the search fast and matches the Quartz iteration order.
+      if (!CronExpression.#matchSchedule(currentDate.getMonth() + 1, this.#fields.month.values)) {
+        currentDate.applyDateOperation(dateMathVerb, TimeUnit.Month, this.#fields.hour.values.length);
+        continue;
+      }
       if (!this.#matchDayOfMonth(currentDate)) {
         currentDate.applyDateOperation(dateMathVerb, TimeUnit.Day, this.#fields.hour.values.length);
         continue;
@@ -529,10 +549,6 @@ export class CronExpression {
         !(this.#fields.dayOfWeek.nthDay <= 0 || Math.ceil(currentDate.getDate() / 7) === this.#fields.dayOfWeek.nthDay)
       ) {
         currentDate.applyDateOperation(dateMathVerb, TimeUnit.Day, this.#fields.hour.values.length);
-        continue;
-      }
-      if (!CronExpression.#matchSchedule(currentDate.getMonth() + 1, this.#fields.month.values)) {
-        currentDate.applyDateOperation(dateMathVerb, TimeUnit.Month, this.#fields.hour.values.length);
         continue;
       }
       if (!this.#matchHour(currentDate, dateMathVerb, reverse)) {

@@ -403,6 +403,9 @@ export class CronFieldCollection {
         if (field instanceof CronDayOfWeek && field.nthDay > 0) {
           return `${value}#${field.nthDay}`;
         }
+        if (field instanceof CronDayOfMonth && field.nearestWeekday) {
+          return `${value}W`;
+        }
         return value;
       })
       .join(',');

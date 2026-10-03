@@ -124,13 +124,22 @@ export class CronExpressionParser {
       CronMonth.constraints,
       rand,
     ) as MonthRange[];
-    const dayOfMonth = CronExpressionParser.#parseField(
-      CronUnit.DayOfMonth,
-      rawFields.dayOfMonth,
-      CronDayOfMonth.constraints,
-      rand,
-    ) as DayOfMonthRange[];
-    const { dayOfWeek: _dayOfWeek, nthDayOfWeek } = CronExpressionParser.#parseNthDay(rawFields.dayOfWeek);
+    // The Quartz "W" modifier is validated up-front: the generic field parser
+    // cannot distinguish "15W" from the plain day 15.
+    let dayOfMonth: DayOfMonthRange[];
+    let nearestWeekday = false;
+    if (rawFields.dayOfMonth.includes('W')) {
+      ({ values: dayOfMonth, nearestWeekday } = CronExpressionParser.#parseNearestWeekday(rawFields.dayOfMonth));
+    } else {
+      dayOfMonth = CronExpressionParser.#parseField(
+        CronUnit.DayOfMonth,
+        rawFields.dayOfMonth,
+        CronDayOfMonth.constraints,
+        rand,
+      ) as DayOfMonthRange[];
+    }
+    const dayOfWeekRaw = rawFields.dayOfWeek;
+    const { dayOfWeek: _dayOfWeek, nthDayOfWeek } = CronExpressionParser.#parseNthDay(dayOfWeekRaw);
     const dayOfWeek = CronExpressionParser.#parseField(
       CronUnit.DayOfWeek,
       _dayOfWeek,
@@ -138,11 +147,23 @@ export class CronExpressionParser {
       rand,
     ) as DayOfWeekRange[];
 
+    if (nearestWeekday && !dayOfMonth.includes('L' as DayOfMonthRange) && month.length === 1) {
+      // A day that cannot exist in the restricted month (even in a leap year)
+      // never fires; Quartz's own iteration errors out on such expressions.
+      const referencedDay = dayOfMonth[0] as number;
+      const maxDayInMonth = CronMonth.daysInMonth[month[0] - 1];
+      if (referencedDay > maxDayInMonth) {
+        throw new Error(
+          `Constraint error, day ${referencedDay} does not exist in month ${month[0]} for the "W" modifier`,
+        );
+      }
+    }
+
     const fields = new CronFieldCollection({
       second: new CronSecond(second, { rawValue: rawFields.second }),
       minute: new CronMinute(minute, { rawValue: rawFields.minute }),
       hour: new CronHour(hour, { rawValue: rawFields.hour }),
-      dayOfMonth: new CronDayOfMonth(dayOfMonth, { rawValue: rawFields.dayOfMonth }),
+      dayOfMonth: new CronDayOfMonth(dayOfMonth, { rawValue: rawFields.dayOfMonth, nearestWeekday }),
       month: new CronMonth(month, { rawValue: rawFields.month }),
       dayOfWeek: new CronDayOfWeek(dayOfWeek, { rawValue: rawFields.dayOfWeek, nthDayOfWeek }),
     });
@@ -427,6 +448,37 @@ export class CronExpressionParser {
 
     // Create range
     return this.#createRange(field, min, max, repeatInterval);
+  }
+
+  /**
+   * Parse the Quartz "W" (nearest weekday) modifier of the day-of-month field.
+   * Only a single concrete day followed by "W" ("15W") or "LW" (last weekday of
+   * the month) are supported, matching Quartz. Combining "W" with a list, range,
+   * step, wildcard or "H" is rejected, as Quartz does not define a meaning for it.
+   *
+   * @param {string} rawValue - The raw day-of-month value containing a "W".
+   * @private
+   * @returns {{ values: DayOfMonthRange[]; nearestWeekday: true }} The referenced day and the nearest-weekday flag.
+   */
+  static #parseNearestWeekday(rawValue: string): { values: DayOfMonthRange[]; nearestWeekday: true } {
+    const match = /^(?:(\d{1,2})W|LW)$/.exec(rawValue);
+    if (!match) {
+      throw new Error(
+        'Constraint error, the "W" modifier can only be applied to a single day (e.g. "15W") or combined with "L" as "LW"',
+      );
+    }
+
+    if (match[1] !== undefined) {
+      const day = parseInt(match[1], 10);
+      if (day < CronDayOfMonth.min || day > CronDayOfMonth.max) {
+        throw new Error(
+          `Constraint error, got value ${day} expected range ${CronDayOfMonth.min}-${CronDayOfMonth.max}`,
+        );
+      }
+      return { values: [day as DayOfMonthRange], nearestWeekday: true };
+    }
+
+    return { values: ['L' as DayOfMonthRange], nearestWeekday: true };
   }
 
   /**

@@ -23,7 +23,7 @@ export class CronDayOfMonth extends CronField {
     return DAY_CHARS;
   }
   static get validChars(): RegExp {
-    return /^[?,*\dLH/-]+$|^.*H\(\d+-\d+\)\/\d+.*$|^.*H\(\d+-\d+\).*$|^.*H\/\d+.*$/;
+    return /^[?,*\dLWH/-]+$|^.*H\(\d+-\d+\)\/\d+.*$|^.*H\(\d+-\d+\).*$|^.*H\/\d+.*$/;
   }
   /**
    * CronDayOfMonth constructor. Initializes the "day of the month" field with the provided values.
@@ -42,5 +42,31 @@ export class CronDayOfMonth extends CronField {
    */
   get values(): DayOfMonthRange[] {
     return super.values as DayOfMonthRange[];
+  }
+
+  /**
+   * Indicates whether the field uses the Quartz "W" modifier ("nearest weekday").
+   * When true, the field contains a single day ("15W") or "LW", and the actual
+   * firing day is the weekday (Monday-Friday) nearest to that day within the same month.
+   * @returns {boolean}
+   */
+  get nearestWeekday(): boolean {
+    return this.options.nearestWeekday === true;
+  }
+
+  /**
+   * Validates the field values against the allowed range and special characters.
+   * @throws {Error} if validation fails
+   */
+  validate(): void {
+    super.validate();
+    if (
+      this.nearestWeekday &&
+      (this.values.length !== 1 || (typeof this.values[0] === 'string' && this.values[0] !== 'L'))
+    ) {
+      throw new Error(
+        `${this.constructor.name} Validation error, the "W" modifier can only be applied to a single day (e.g. "15W") or to "LW"`,
+      );
+    }
   }
 }

@@ -504,6 +504,15 @@ export class CronDate {
   }
 
   /**
+   * Returns the number of days in the current month.
+   * @returns {number}
+   */
+  getDaysInMonth(): number {
+    // daysInMonth is only undefined on an invalid DateTime; CronDate always holds a valid one.
+    return this.#date.daysInMonth as number;
+  }
+
+  /**
    * Returns true if the day is the last day of the month.
    * @returns {boolean}
    */
@@ -538,6 +547,45 @@ export class CronDate {
 
     // Check if the current day is within 7 days of the end of the month
     return day > lastDay - 7;
+  }
+
+  /**
+   * Returns the day of the month of the weekday (Monday-Friday) nearest to the
+   * given day, following Quartz's "W" rule:
+   * - if the day is a Saturday, use the preceding Friday, except when the day is
+   *   the 1st of the month, in which case use the following Monday;
+   * - if the day is a Sunday, use the following Monday, except when the day is
+   *   the last day of the month, in which case use the preceding Friday;
+   * - weekdays are returned unchanged.
+   *
+   * Months that do not contain the referenced day do not fire, with one Quartz
+   * quirk: "31W" also fires on a Friday that is the last day of a 30-day month
+   * (the missing 31st would be a Saturday).
+   *
+   * @param {number} day - Referenced day of the month (1-31); for "LW" pass the last day of the month.
+   * @returns {number | null} The nearest weekday day of the month, or null when this month does not fire.
+   */
+  getNearestWeekdayOfMonth(day: number): number | null {
+    const daysInMonth = this.getDaysInMonth();
+    if (day > daysInMonth) {
+      // Quartz quirk: "31W" fires on a Friday ending a 30-day month.
+      if (day === 31 && daysInMonth === 30 && this.#date.set({ day: daysInMonth }).weekday === 5) {
+        return daysInMonth;
+      }
+      return null;
+    }
+
+    // Luxon weekdays are 1 (Monday) through 7 (Sunday).
+    const weekday = this.#date.set({ day }).weekday;
+    if (weekday === 6) {
+      // Saturday: Monday the 1st jumps forward, otherwise back to Friday.
+      return day === 1 ? day + 2 : day - 1;
+    }
+    if (weekday === 7) {
+      // Sunday: the last day jumps back to Friday, otherwise forward to Monday.
+      return day === daysInMonth ? day - 2 : day + 1;
+    }
+    return day;
   }
 
   /**
